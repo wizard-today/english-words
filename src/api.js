@@ -1,4 +1,4 @@
-const API_BASE = "https://words-notion-server.wizard-today.deno.net/";
+const API_BASE = "https://words-notion-server.wizard-today.deno.net";
 
 async function apiFetch(path, { method = "GET", body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -15,7 +15,7 @@ async function apiFetch(path, { method = "GET", body } = {}) {
     } catch {}
     throw new Error(
       error.error ??
-      `Request failed: ${res.status} ${res.statusText}`
+      `Request failed: ${path} ${res.status} ${res.statusText}`
     );
   }
   const contentType = res.headers.get("content-type");

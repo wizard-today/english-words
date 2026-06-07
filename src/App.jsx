@@ -163,15 +163,42 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 
 /* Mode pills */
 .mode-pill {
-  flex: 1; padding: 10px 8px; text-align: center;
-  font-size: 13px; font-weight: 500;
-  border-radius: var(--r-sm); cursor: pointer;
-  transition: all var(--transition);
+  flex: 1;
+  padding: 10px 8px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  border-radius: var(--r-sm);
   border: 1px solid var(--rule2);
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
+
+  background: var(--card);
+  color: var(--ink2);
+
+  transition: all var(--transition);
 }
-.mode-pill.active  { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.mode-pill:not(.active):hover { background: var(--rule); }
+
+.mode-pill.active {
+  position: relative;
+}
+
+.mode-pill.active::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+
+  border-radius: 999px;
+
+  background: var(--gold);
+}
 
 /* Study */
 .study-word {
@@ -221,31 +248,42 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .cat-badge-has-repeat .repeat-part { color: var(--green); }
 .cat-badge-no-repeat  .repeat-part { color: var(--ink3); }
 
-/* Mode pill count badge — always readable */
+/* Бэйджи */
+
 .pill-count {
-  display: inline-flex; align-items: center;
-  font-size: 12px; font-weight: 700; padding: 2px 9px;
-  border-radius: 100px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 28px;
+  height: 28px;
+
+  padding: 0 10px;
+
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 700;
 }
-/* inactive pill, has repeats: dark green text on green bg */
-.pill-count-repeat-inactive {
-  background: var(--green-bg);
+
+.pill-count-repeat {
   color: var(--green);
-  border: 1px solid var(--green-rule);
+  border: 1px solid var(--green);
+  background: transparent;
 }
-/* inactive pill, no repeats: muted */
-.pill-count-plain-inactive {
-  background: var(--rule);
+
+.pill-count-default {
   color: var(--ink2);
   border: 1px solid var(--rule2);
+  background: transparent;
 }
-/* active pill (dark background): always white text, subtle white bg */
-.pill-count-active {
-  background: rgba(255,255,255,0.18);
-  color: #ffffff;
-  border: 1px solid rgba(255,255,255,0.30);
+
+.pill-count-zero {
+  color: inherit;
+  border: 1px solid var(--rule2);
+  background: transparent;
 }
-`;
+`
 
 /* ════════════════════════════════════════════
    APP
@@ -628,14 +666,25 @@ function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts,
 }
 
 function ModeButton({ active, label, count, hasRepeat, onClick }) {
-  const badgeClass = active
-    ? "pill-count pill-count-active"
-    : hasRepeat
-      ? "pill-count pill-count-repeat-inactive"
-      : "pill-count pill-count-plain-inactive";
+  let badgeClass = "pill-count";
+
+  if (count > 0 && hasRepeat) {
+    badgeClass += " pill-count-repeat";
+  } else if (count > 0) {
+    badgeClass += " pill-count-default";
+  } else {
+    badgeClass += " pill-count-zero";
+  }
+
+  if (active) {
+    badgeClass += " pill-count-active";
+  }
 
   return (
-    <button onClick={onClick} className={`mode-pill${active ? " active" : ""}`}>
+    <button
+      onClick={onClick}
+      className={`mode-pill${active ? " active" : ""}`}
+    >
       <span>{label}</span>
       <span className={badgeClass}>{count}</span>
     </button>
@@ -711,7 +760,7 @@ function CatBadge({ repeat, total }) {
   const hasRepeat = repeat > 0;
   return (
     <span className={`cat-badge ${hasRepeat ? "cat-badge-has-repeat" : "cat-badge-no-repeat"}`}>
-      {hasRepeat && <span className="repeat-part">{repeat}/</span>}
+      {hasRepeat && <span className="repeat-part">{repeat}&nbsp;/&nbsp;</span>}
       <span>{total}</span>
     </span>
   );
@@ -791,13 +840,11 @@ function StudyScreen({ card, cardState, cardIdx, timerSec, isRepeat, learnedCoun
             {!card.repeatable && <span className="chip chip-gray" style={{ fontSize:11 }}>без расписания</span>}
           </div>
 
-          <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:10 }}>Вопрос</p>
           <p className="study-word">{card.question}</p>
 
           {showAnswer && (
             <div style={{ marginTop:"1.75rem", animation:"fadeUp 0.2s ease" }}>
               <div className="divider" style={{ marginBottom:"1.5rem" }} />
-              <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:10 }}>Ответ</p>
               <p className="study-answer">{card.answer}</p>
               {card.comment && <p style={{ fontSize:13, color:"var(--ink2)", marginTop:10, lineHeight:1.6 }}>{card.comment}</p>}
             </div>
