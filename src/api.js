@@ -1,4 +1,5 @@
-const API_BASE = "https://words-notion-server.wizard-today.deno.net";
+// const API_BASE = "https://words-notion-server.wizard-today.deno.net";
+const API_BASE = "http://localhost:3000";
 
 async function apiFetch(path, { method = "GET", body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -40,7 +41,8 @@ export class Api {
   async getAllCards({ categoryId } = {}) {
     const params = new URLSearchParams();
     if (categoryId != null) {
-      params.set("categoryId", categoryId);
+      const categoryIds = await this._collectCategoryIds(categoryId);
+      params.set("categoryIds", categoryIds.join(","));
     }
     const query = params.toString();
     return apiFetch(`/cards${query ? `?${query}` : ""}`);
@@ -50,10 +52,34 @@ export class Api {
   async getRepeatCards({ categoryId } = {}) {
     const params = new URLSearchParams();
     if (categoryId != null) {
-      params.set("categoryId", categoryId);
+      const categoryIds = await this._collectCategoryIds(categoryId);
+      params.set("categoryIds", categoryIds.join(","));
     }
     const query = params.toString();
     return apiFetch(`/cards/repeat${query ? `?${query}` : ""}`);
+  }
+
+  /* ── Собирает id категории и всех вложенных рекурсивно ── */
+  async _collectCategoryIds(categoryId) {
+    const categories = await this.getCategories();
+
+    const collect = (id, cats) => {
+      const ids = [id];
+      const category = cats.find((c) => c.id === id);
+      if (category?.nested?.length) {
+        for (const nested of category.nested) {
+          ids.push(...collect(nested.id, nested.nested ? cats.concat(nested.nested) : cats));
+        }
+      }
+      return ids;
+    };
+
+    // Строим плоский список всех категорий для удобного поиска
+    const flatten = (cats) =>
+      cats.flatMap((c) => [c, ...flatten(c.nested ?? [])]);
+
+    const allCategories = flatten(categories);
+    return collect(categoryId, allCategories);
   }
 
   /* ── Mark learned ── */

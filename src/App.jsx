@@ -586,6 +586,11 @@ export default function App() {
 ════════════════════════════════════════════ */
 
 function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts, mode, catOpen, onOpenCat, onCloseCat, onSelectCat, onMode, onStart }) {
+  const canStart =
+    mode === "due"
+      ? selectedCounts.repeat > 0
+      : selectedCounts.total > 0;
+  
   return (
     <>
       <div style={{ maxWidth:400, margin:"0 auto", paddingTop:"2.5rem", display:"flex", flexDirection:"column", gap:"1.25rem" }}>
@@ -648,7 +653,7 @@ function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts,
             : "📚 Все карточки категории. Расписание изменится только у карточек с повторением."}
         </div>
 
-        <button onClick={onStart} className="btn btn-primary" style={{ width:"100%", padding:"14px", fontSize:15, marginTop:"0.1rem" }}>
+        <button onClick={onStart} disabled={!canStart} className="btn btn-primary" style={{ width:"100%", padding:"14px", fontSize:15, marginTop:"0.1rem" }}>
           Начать повторение →
         </button>
       </div>
