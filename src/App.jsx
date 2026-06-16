@@ -1,10 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Api } from './api'
 
-/* ════════════════════════════════════════════
-   УТИЛИТЫ
-════════════════════════════════════════════ */
-
 const shuffle = arr => {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -14,8 +10,13 @@ const shuffle = arr => {
   return a;
 };
 
-const LAST_CAT_KEY  = "fc_last_category_id";
-const LAST_MODE_KEY = "fc_last_mode";
+const LAST_CAT_KEY   = "fc_last_category_id";
+const LAST_MODE_KEY  = "fc_last_mode";
+const LAST_TRAIN_KEY = "fc_last_train_mode";
+const LAST_TIMER_KEY = "fc_last_timer";
+
+const LEARN_INTERVALS = [10, 5, 3, 2, 1];
+const TIMER_OPTIONS   = [1, 2, 3, 5, 10];
 
 function countAll(cat) {
   const own  = cat.cards_count ?? 0;
@@ -48,9 +49,6 @@ function nextRepeat(card, repeats) {
   return { repeat_date_timestamp: now + next.timestamp * 1000, repeat_after: { id: next.id } };
 }
 
-/* ════════════════════════════════════════════
-   СТИЛИ
-════════════════════════════════════════════ */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap');
 
@@ -70,6 +68,9 @@ const CSS = `
   --green-rule: rgba(26,107,60,0.25);
   --red:        #c0392b;
   --red-bg:     #fdf0ef;
+  --blue:       #1a5cb8;
+  --blue-bg:    #eaf0fb;
+  --blue-rule:  rgba(26,92,184,0.25);
   --r:          14px;
   --r-sm:       9px;
   --transition: 0.15s cubic-bezier(0.4,0,0.2,1);
@@ -92,6 +93,9 @@ const CSS = `
     --green-rule: rgba(60,200,112,0.2);
     --red:        #e05548;
     --red-bg:     #210c0a;
+    --blue:       #5090e8;
+    --blue-bg:    #0a1428;
+    --blue-rule:  rgba(80,144,232,0.2);
   }
 }
 
@@ -143,8 +147,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .chip-gold  { background: var(--gold-bg);  color: var(--gold);  }
 .chip-gray  { background: var(--rule);     color: var(--ink2);  }
 .chip-red   { background: var(--red-bg);   color: var(--red);   }
+.chip-blue  { background: var(--blue-bg);  color: var(--blue);  border: 1px solid var(--blue-rule); }
 
-/* Category browser */
 .cat-item {
   display: flex; align-items: center; justify-content: space-between;
   padding: 7px 10px; border-radius: var(--r-sm);
@@ -161,46 +165,84 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .cat-toggle.open { transform: rotate(90deg); }
 
-/* Mode pills */
 .mode-pill {
   flex: 1;
   padding: 10px 8px;
-
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
-
   font-size: 13px;
   font-weight: 600;
-
   border-radius: var(--r-sm);
   border: 1px solid var(--rule2);
-
   background: var(--card);
   color: var(--ink2);
-
   transition: all var(--transition);
 }
-
 .mode-pill.active {
   position: relative;
 }
-
 .mode-pill.active::before {
   content: "";
   position: absolute;
-  top: -1px;
-  left: 10px;
-  right: 10px;
+  top: -1px; left: 10px; right: 10px;
   height: 2px;
-
   border-radius: 999px;
-
   background: var(--gold);
 }
 
-/* Study */
+.train-pill {
+  flex: 1;
+  padding: 11px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--rule2);
+  background: var(--card);
+  color: var(--ink2);
+  transition: all var(--transition);
+  cursor: pointer;
+  position: relative;
+}
+.train-pill.active {
+  color: var(--ink);
+  border-color: var(--blue-rule);
+  background: var(--blue-bg);
+}
+.train-pill.active::before {
+  content: "";
+  position: absolute;
+  top: -1px; left: 10px; right: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.timer-opt {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--rule2);
+  background: var(--card);
+  color: var(--ink2);
+  transition: all var(--transition);
+  cursor: pointer;
+  text-align: center;
+}
+.timer-opt.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.timer-opt:hover:not(.active) { background: var(--rule); }
+
 .study-word {
   font-family: 'DM Serif Display', Georgia, serif;
   font-style: italic;
@@ -220,7 +262,6 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .divider { height: 1px; background: var(--rule); }
 
-/* Overlay */
 .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.38);
   display: flex; align-items: flex-end;
@@ -240,7 +281,6 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .overlay-panel::-webkit-scrollbar { width: 4px; }
 .overlay-panel::-webkit-scrollbar-thumb { background: var(--rule2); border-radius: 2px; }
 
-/* Cat badge */
 .cat-badge { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 100px; }
 .cat-badge-has-repeat { background: var(--green-bg); border: 1px solid var(--green-rule); color: var(--green); }
 .cat-badge-no-repeat  { background: var(--rule); color: var(--ink2); }
@@ -248,104 +288,88 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .cat-badge-has-repeat .repeat-part { color: var(--green); }
 .cat-badge-no-repeat  .repeat-part { color: var(--ink3); }
 
-/* Бэйджи */
-
 .pill-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   min-width: 28px;
   height: 28px;
-
   padding: 0 10px;
-
   border-radius: 999px;
-
   font-size: 12px;
   font-weight: 700;
 }
+.pill-count-repeat  { color: var(--green); border: 1px solid var(--green); background: transparent; }
+.pill-count-default { color: var(--ink2);  border: 1px solid var(--rule2); background: transparent; }
+.pill-count-zero    { color: inherit;      border: 1px solid var(--rule2); background: transparent; }
 
-.pill-count-repeat {
-  color: var(--green);
-  border: 1px solid var(--green);
-  background: transparent;
-}
-
-.pill-count-default {
-  color: var(--ink2);
-  border: 1px solid var(--rule2);
-  background: transparent;
-}
-
-.pill-count-zero {
-  color: inherit;
-  border: 1px solid var(--rule2);
-  background: transparent;
+.interval-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; padding: 3px 9px;
+  border-radius: 100px;
+  background: var(--blue-bg); color: var(--blue);
+  border: 1px solid var(--blue-rule);
 }
 `
 
-/* ════════════════════════════════════════════
-   APP
-════════════════════════════════════════════ */
-
 export default function App() {
-  const [api]        = useState(() => new Api());
-  const [screen,     setScreen]     = useState("start");
+  const [api]      = useState(() => new Api());
+  const [screen,   setScreen]   = useState("start");
   const [categories, setCategories] = useState([]);
   const [selectedCatId, setSelectedCatId] = useState(() => localStorage.getItem(LAST_CAT_KEY) ?? null);
-  const [mode,       setMode]       = useState(() => localStorage.getItem(LAST_MODE_KEY) ?? "due");
-  const [catOpen,    setCatOpen]    = useState(false);
-  const [loading,    setLoading]    = useState(true);
+  const [mode,     setMode]     = useState(() => localStorage.getItem(LAST_MODE_KEY) ?? "due");
+  // trainMode: "review" | "learn"
+  const [trainMode, setTrainMode] = useState(() => localStorage.getItem(LAST_TRAIN_KEY) ?? "review");
+  const [timerSec,  setTimerSec]  = useState(() => {
+    const s = localStorage.getItem(LAST_TIMER_KEY);
+    return s ? Number(s) : 3;
+  });
+  const [catOpen,  setCatOpen]  = useState(false);
+  const [loading,  setLoading]  = useState(true);
 
-  // Study render state
-  const [cards,         setCards]         = useState([]);
-  const [cardIdx,       setCardIdx]       = useState(0);
-  const [cardState,     setCardState]     = useState("question");
-  const timerSec = 5;
+  // Study state
+  const [cards,           setCards]           = useState([]);
+  const [cardIdx,         setCardIdx]         = useState(0);
+  const [cardState,       setCardState]       = useState("question");
   const [learnedCount,    setLearnedCount]    = useState(0);
   const [notLearnedCount, setNotLearnedCount] = useState(0);
   const [uniqueLeft,      setUniqueLeft]      = useState(0);
   const [stats,           setStats]           = useState(null);
 
-  // Refs for synchronous access inside handlers
+  // Learn mode UI state
+  const [learnInterval, setLearnInterval] = useState(10);
+  const [learnErrors,   setLearnErrors]   = useState(0);
+
+  // Refs
   const cardsRef     = useRef([]);
   const cardIdxRef   = useRef(0);
   const cardStateRef = useRef("question");
   const repeatsRef   = useRef([]);
+  const timerSecRef  = useRef(timerSec);
+  const trainModeRef = useRef(trainMode);
 
-  // Per-session tracking sets/maps (keyed by card.id)
-  //
-  // failedOnce:   Set<id>  — ответ был показан хотя бы один раз за текущий показ карточки.
-  //               Сбрасывается при замешивании, чтобы следующий показ начинался чисто.
-  //
-  // outcomeSet:   Set<id>  — карточки, для которых уже зафиксирован итог (learned / notLearned).
-  //               Используется, чтобы не вызывать API повторно и не менять счётчики.
-  //
-  // insertedOnce: Set<id>  — карточки, которые хотя бы раз были замешаны обратно в колоду
-  //               (провалились). Когда такая карточка снова появляется, "Знаю" просто
-  //               убирает её без повторного замешивания и без изменения счётчиков.
+  // Review mode tracking
   const failedOnceRef   = useRef(new Set());
   const outcomeSetRef   = useRef(new Set());
   const insertedOnceRef = useRef(new Set());
+  const learnedRef      = useRef(0);
+  const notLearnedRef   = useRef(0);
+  const totalUniqueRef  = useRef(0);
+  const processedRef    = useRef(new Set());
 
-  // Counters ref (for synchronous reads)
-  const learnedRef    = useRef(0);
-  const notLearnedRef = useRef(0);
-  const totalUniqueRef= useRef(0);
-  // Set of original card ids that have left the "active" pool (have a final outcome)
-  const processedRef  = useRef(new Set());
+  // Learn mode tracking
+  const learnIntervalRef  = useRef(10);
+  const learnErrorsRef    = useRef(0);
+  const learnFailedRef    = useRef(new Set()); // failed in current pass
 
   const stopTimerRef = useRef(null);
 
-  // helpers
   const syncCards = (v) => { cardsRef.current = v; setCards(v); };
   const syncIdx   = (v) => { cardIdxRef.current = v; setCardIdx(v); };
   const syncState = (v) => { cardStateRef.current = v; setCardState(v); };
 
   const recalcLeft = () => {
-    const left = Math.max(0, totalUniqueRef.current - processedRef.current.size);
-    setUniqueLeft(left);
+    setUniqueLeft(Math.max(0, totalUniqueRef.current - processedRef.current.size));
   };
 
   useEffect(() => {
@@ -360,12 +384,24 @@ export default function App() {
     if (selectedCatId) localStorage.setItem(LAST_CAT_KEY, selectedCatId);
     else localStorage.removeItem(LAST_CAT_KEY);
   }, [selectedCatId]);
+
   useEffect(() => { localStorage.setItem(LAST_MODE_KEY, mode); }, [mode]);
 
-  // Timer — запускается только на вопросе
+  useEffect(() => {
+    localStorage.setItem(LAST_TRAIN_KEY, trainMode);
+    trainModeRef.current = trainMode;
+  }, [trainMode]);
+
+  useEffect(() => {
+    localStorage.setItem(LAST_TIMER_KEY, String(timerSec));
+    timerSecRef.current = timerSec;
+  }, [timerSec]);
+
+  // Timer effect — runs per card/state change
   useEffect(() => {
     if (screen !== "study" || cardStateRef.current !== "question") return;
-    const end = Date.now() + timerSec * 1000;
+    const sec = timerSecRef.current;
+    const end = Date.now() + sec * 1000;
     const id = setInterval(() => {
       if (Date.now() >= end) { clearInterval(id); handleTimerExpire(); }
     }, 80);
@@ -377,44 +413,57 @@ export default function App() {
   const handleTimerExpire = () => {
     const card = cardsRef.current[cardIdxRef.current];
     if (!card) return;
-    // Таймер истёк — считаем как "посмотрел ответ"
+    const alreadyFailed = failedOnceRef.current.has(card.id);
     failedOnceRef.current.add(card.id);
+    if (trainModeRef.current === "learn" && !alreadyFailed) {
+      learnFailedRef.current.add(card.id);
+      learnErrorsRef.current++;
+      setLearnErrors(learnErrorsRef.current);
+    }
     syncState("answer");
   };
 
   const handleStart = async () => {
     const opts = { categoryId: selectedCatId ?? undefined };
     let deck;
-
     if (mode === "due") {
-      const due = await api.getRepeatCards(opts);
-      deck = shuffle(due);
+      deck = shuffle(await api.getRepeatCards(opts));
     } else {
-      const all = await api.getAllCards(opts);
-      deck = shuffle(all);
+      deck = shuffle(await api.getAllCards(opts));
     }
-
     if (!deck.length) return;
 
-    // Reset all tracking state
-    failedOnceRef.current   = new Set();
-    outcomeSetRef.current   = new Set();
-    insertedOnceRef.current = new Set();
-    learnedRef.current      = 0;
-    notLearnedRef.current   = 0;
-    totalUniqueRef.current  = deck.length;
-    processedRef.current    = new Set();
+    if (trainMode === "learn") {
+      // Start from the user-selected timer value (or the closest higher interval)
+      const selected = timerSecRef.current;
+      const startInterval = LEARN_INTERVALS.find(i => i <= selected) ?? LEARN_INTERVALS[LEARN_INTERVALS.length - 1];
+      learnIntervalRef.current = startInterval;
+      learnErrorsRef.current   = 0;
+      learnFailedRef.current   = new Set();
+      failedOnceRef.current    = new Set();
+      totalUniqueRef.current   = deck.length;
 
-    cardsRef.current    = deck;
-    cardIdxRef.current  = 0;
-    cardStateRef.current= "question";
+      setLearnInterval(startInterval);
+      setLearnErrors(0);
+      timerSecRef.current = startInterval;
+      setUniqueLeft(deck.length);
+    } else {
+      failedOnceRef.current   = new Set();
+      outcomeSetRef.current   = new Set();
+      insertedOnceRef.current = new Set();
+      learnedRef.current      = 0;
+      notLearnedRef.current   = 0;
+      totalUniqueRef.current  = deck.length;
+      processedRef.current    = new Set();
 
-    setCards(deck);
-    setCardIdx(0);
-    setCardState("question");
-    setLearnedCount(0);
-    setNotLearnedCount(0);
-    setUniqueLeft(deck.length);
+      setLearnedCount(0);
+      setNotLearnedCount(0);
+      setUniqueLeft(deck.length);
+    }
+
+    syncCards(deck);
+    syncIdx(0);
+    syncState("question");
     setScreen("study");
   };
 
@@ -422,65 +471,122 @@ export default function App() {
     stopTimerRef.current?.();
     const card = cardsRef.current[cardIdxRef.current];
     if (!card) return;
+    const alreadyFailed = failedOnceRef.current.has(card.id);
     failedOnceRef.current.add(card.id);
+    if (trainModeRef.current === "learn" && !alreadyFailed) {
+      // Count error immediately on first reveal/expire per card per pass
+      learnFailedRef.current.add(card.id);
+      learnErrorsRef.current++;
+      setLearnErrors(learnErrorsRef.current);
+    }
     syncState("answer");
   };
 
-  // Background API call — fire and forget
   const callApiBackground = (card, outcome) => {
     if (outcome === "learned") {
       const { repeat_date_timestamp, repeat_after } = nextRepeat(card, repeatsRef.current);
       api.markCardLearned(card.id, repeat_date_timestamp, repeat_after).catch(() => {});
-    } else if (outcome === "notLearned") {
+    } else {
       api.markCardNotLearned(card.id).catch(() => {});
     }
   };
 
-  const handleNext = () => {
+  // ── Learn mode: next card ──
+  const handleNextLearn = () => {
     stopTimerRef.current?.();
+    const cards = cardsRef.current;
+    const idx   = cardIdxRef.current;
+    const card  = cards[idx];
+    if (!card) return;
 
+    // If failed this show, ensure it's tracked
+    if (failedOnceRef.current.has(card.id)) {
+      learnFailedRef.current.add(card.id);
+    }
+    failedOnceRef.current.delete(card.id);
+
+    const nextIdx = idx + 1;
+    if (nextIdx < cards.length) {
+      // More cards in this pass — just advance
+      const remaining = totalUniqueRef.current - nextIdx;
+      setUniqueLeft(remaining);
+      syncIdx(nextIdx);
+      syncState("question");
+      return;
+    }
+
+    // ── End of pass ──
+    const hadErrors = learnFailedRef.current.size > 0;
+
+    if (hadErrors) {
+      // Had errors — reshuffle, repeat at same interval, reset counter for new pass
+      learnErrorsRef.current = 0;
+      setLearnErrors(0);
+      learnFailedRef.current = new Set();
+      failedOnceRef.current  = new Set();
+      const reshuffled = shuffle([...cards]);
+      setUniqueLeft(reshuffled.length);
+      syncCards(reshuffled);
+      syncIdx(0);
+      syncState("question");
+    } else {
+      // Clean pass — advance interval
+      const curIdx  = LEARN_INTERVALS.indexOf(learnIntervalRef.current);
+      const nextIntIdx = curIdx + 1;
+
+      if (nextIntIdx >= LEARN_INTERVALS.length) {
+        // Was at 1s and clean — done!
+        setStats({ learnMode: true, total: totalUniqueRef.current });
+        setScreen("complete");
+        return;
+      }
+
+      const nextInterval = LEARN_INTERVALS[nextIntIdx];
+      learnIntervalRef.current = nextInterval;
+      learnErrorsRef.current   = 0;
+      learnFailedRef.current   = new Set();
+      failedOnceRef.current    = new Set();
+      setLearnInterval(nextInterval);
+      setLearnErrors(0);
+      setTimerSec(nextInterval);
+      timerSecRef.current = nextInterval;
+
+      const reshuffled = shuffle([...cards]);
+      setUniqueLeft(reshuffled.length);
+      syncCards(reshuffled);
+      syncIdx(0);
+      syncState("question");
+    }
+  };
+
+  // ── Review mode: next card (original algorithm) ──
+  const handleNextReview = () => {
+    stopTimerRef.current?.();
     const cards = cardsRef.current;
     const idx   = cardIdxRef.current;
     const card  = cards[idx];
     if (!card) return;
 
     const failed      = failedOnceRef.current.has(card.id);
-    const hadOutcome  = outcomeSetRef.current.has(card.id);   // итог уже был зафиксирован ранее
-    const wasInserted = insertedOnceRef.current.has(card.id); // карточка уже возвращалась в колоду
-
+    const hadOutcome  = outcomeSetRef.current.has(card.id);
+    const wasInserted = insertedOnceRef.current.has(card.id);
     let newCards = [...cards];
 
     if (!failed) {
-      // ══════════════════════════════════════════
-      // Нажали "Знаю" (ответ не открывали, таймер не истёк)
-      // ══════════════════════════════════════════
-
       if (!wasInserted) {
-        // Первая попытка — знает с первого раза
         if (card.repeatable && !hadOutcome) {
-          // Помечаем как выученную и вызываем API в фоне
           outcomeSetRef.current.add(card.id);
           learnedRef.current++;
           setLearnedCount(learnedRef.current);
           callApiBackground(card, "learned");
         }
-        // Если !card.repeatable — ничего не помечаем, просто идём дальше
         processedRef.current.add(card.id);
         recalcLeft();
       } else {
-        // Карточка уже была замешана (провалилась раньше), теперь нажали "Знаю"
-        // Итог уже зафиксирован (notLearned), счётчики не меняем, просто убираем карточку
-        // processedRef уже содержит этот id (был добавлен при первом провале)
         recalcLeft();
       }
-
     } else {
-      // ══════════════════════════════════════════
-      // Открыли ответ / не успели по таймеру
-      // ══════════════════════════════════════════
-
       if (!hadOutcome) {
-        // Первый провал: фиксируем итог notLearned
         outcomeSetRef.current.add(card.id);
         notLearnedRef.current++;
         setNotLearnedCount(notLearnedRef.current);
@@ -488,21 +594,16 @@ export default function App() {
         callApiBackground(card, "notLearned");
         recalcLeft();
       }
-      // При любом провале (первом или повторном) — замешиваем карточку в середину оставшихся
       insertedOnceRef.current.add(card.id);
       const remaining = newCards.slice(idx + 1);
       const insertAt  = idx + 1 + Math.floor(remaining.length / 2);
       newCards.splice(insertAt, 0, card);
-      // Сбрасываем failed-флаг, чтобы следующий показ этой карточки начинался чисто
       failedOnceRef.current.delete(card.id);
     }
 
     const nextIdx = idx + 1;
     if (nextIdx >= newCards.length) {
-      setStats({
-        learned:    learnedRef.current,
-        notLearned: notLearnedRef.current,
-      });
+      setStats({ learned: learnedRef.current, notLearned: notLearnedRef.current });
       setScreen("complete");
       return;
     }
@@ -512,6 +613,11 @@ export default function App() {
     syncState("question");
   };
 
+  const handleNext = () => {
+    if (trainModeRef.current === "learn") handleNextLearn();
+    else handleNextReview();
+  };
+
   const handleReturn = async () => {
     const cats = await api.getCategories();
     setCategories(cats);
@@ -519,15 +625,20 @@ export default function App() {
   };
 
   const handleToggleCollapsed = (categoryId, collapsed) => {
-    // Optimistic update: patch collapsed flag in the categories tree
     const patchTree = (list) => list.map(cat => {
       if (cat.id === categoryId) return { ...cat, collapsed };
       if (cat.nested?.length) return { ...cat, nested: patchTree(cat.nested) };
       return cat;
     });
     setCategories(prev => patchTree(prev));
-    // Persist to DB
     api.setCategoryCollapsed(categoryId, collapsed);
+  };
+
+  const handleTrainMode = (tm) => {
+    setTrainMode(tm);
+    const def = tm === "learn" ? 10 : 3;
+    setTimerSec(def);
+    timerSecRef.current = def;
   };
 
   const selectedCounts = (() => {
@@ -560,11 +671,15 @@ export default function App() {
           selectedLabel={selectedLabel}
           selectedCounts={selectedCounts}
           mode={mode}
+          trainMode={trainMode}
+          timerSec={timerSec}
           catOpen={catOpen}
           onOpenCat={() => setCatOpen(true)}
           onCloseCat={() => setCatOpen(false)}
           onSelectCat={id => { setSelectedCatId(id); setCatOpen(false); }}
           onMode={setMode}
+          onTrainMode={handleTrainMode}
+          onTimerSec={setTimerSec}
           onStart={handleStart}
           onToggleCollapsed={handleToggleCollapsed}
         />
@@ -576,6 +691,9 @@ export default function App() {
           cardState={cardState}
           cardIdx={cardIdx}
           timerSec={timerSec}
+          trainMode={trainMode}
+          learnInterval={learnInterval}
+          learnErrors={learnErrors}
           isRepeat={insertedOnceRef.current.has(cards[cardIdx]?.id)}
           learnedCount={learnedCount}
           notLearnedCount={notLearnedCount}
@@ -592,25 +710,34 @@ export default function App() {
   );
 }
 
-/* ════════════════════════════════════════════
-   START SCREEN
-════════════════════════════════════════════ */
+/* ══ START SCREEN ══ */
 
-function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts, mode, catOpen, onOpenCat, onCloseCat, onSelectCat, onMode, onStart, onToggleCollapsed }) {
-  const canStart =
-    mode === "due"
-      ? selectedCounts.repeat > 0
-      : selectedCounts.total > 0;
-  
+function StartScreen({
+  categories, selectedCatId, selectedLabel, selectedCounts,
+  mode, trainMode, timerSec,
+  catOpen, onOpenCat, onCloseCat, onSelectCat,
+  onMode, onTrainMode, onTimerSec, onStart, onToggleCollapsed
+}) {
+  const canStart = mode === "due" ? selectedCounts.repeat > 0 : selectedCounts.total > 0;
+
+  const hintText = trainMode === "learn"
+    ? "🧠 Карточки повторяются кругами. При чистом прогоне интервал снижается: 10→5→3→2→1 с. Расписание не меняется."
+    : mode === "due"
+      ? "⏱ Только карточки с наступившей датой повторения. Алгоритм обновит расписание."
+      : "📚 Все карточки категории. Расписание изменится только у карточек с повторением.";
+
+  const hintColor  = trainMode === "learn" ? "var(--blue)"      : mode === "due" ? "var(--gold)"      : "var(--ink2)";
+  const hintBg     = trainMode === "learn" ? "var(--blue-bg)"   : mode === "due" ? "var(--gold-bg)"   : "var(--rule)";
+  const hintBorder = trainMode === "learn" ? "var(--blue-rule)" : mode === "due" ? "var(--gold-rule)" : "var(--rule2)";
+
   return (
     <>
       <div style={{ maxWidth:400, margin:"0 auto", paddingTop:"2.5rem", display:"flex", flexDirection:"column", gap:"1.25rem" }}>
-
         <p style={{ fontSize:26, fontFamily:"'DM Serif Display', Georgia, serif", lineHeight:1.1 }}>
           Повторение слов
         </p>
 
-        {/* Category selector */}
+        {/* Category */}
         <div>
           <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:8 }}>Категория</p>
           <button
@@ -619,8 +746,7 @@ function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts,
               width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
               padding:"12px 14px", borderRadius:"var(--r-sm)",
               background:"var(--card)", border:"1px solid var(--rule2)",
-              color:"var(--ink)", fontSize:14, fontWeight:500,
-              cursor:"pointer", transition:"background var(--transition)"
+              color:"var(--ink)", fontSize:14, fontWeight:500, cursor:"pointer",
             }}
           >
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -631,41 +757,58 @@ function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts,
           </button>
         </div>
 
-        {/* Mode selector */}
+        {/* Train mode */}
         <div>
-          <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:8 }}>Режим</p>
+          <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:8 }}>Тренировка</p>
           <div style={{ display:"flex", gap:8 }}>
-            <ModeButton
-              active={mode === "due"}
-              label="Готовые"
-              count={selectedCounts.repeat}
-              hasRepeat={selectedCounts.repeat > 0}
-              onClick={() => onMode("due")}
-            />
-            <ModeButton
-              active={mode === "all"}
-              label="Все"
-              count={selectedCounts.total}
-              hasRepeat={false}
-              onClick={() => onMode("all")}
-            />
+            {[
+              { id:"review", label:"Повторение", icon:"⏱" },
+              { id:"learn",  label:"Изучение",   icon:"🧠" },
+            ].map(({ id, label, icon }) => (
+              <button
+                key={id}
+                className={`train-pill${trainMode === id ? " active" : ""}`}
+                onClick={() => onTrainMode(id)}
+              >
+                <span style={{ fontSize:18 }}>{icon}</span>
+                <span>{label}</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Mode hint */}
+        {/* Card mode */}
+        <div>
+          <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:8 }}>Карточки</p>
+          <div style={{ display:"flex", gap:8 }}>
+            <ModeButton active={mode==="due"} label="Готовые" count={selectedCounts.repeat} hasRepeat={selectedCounts.repeat>0} onClick={() => onMode("due")} />
+            <ModeButton active={mode==="all"} label="Все"     count={selectedCounts.total}  hasRepeat={false}                  onClick={() => onMode("all")} />
+          </div>
+        </div>
+
+        {/* Timer */}
+        <div>
+          <p style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"var(--ink3)", marginBottom:8 }}>Интервал таймера</p>
+          <div style={{ display:"flex", gap:6 }}>
+            {TIMER_OPTIONS.map(sec => (
+              <button key={sec} className={`timer-opt${timerSec===sec?" active":""}`} onClick={() => onTimerSec(sec)}>
+                {sec}с
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Hint */}
         <div style={{
           padding:"11px 14px", borderRadius:"var(--r-sm)",
-          background: mode === "due" ? "var(--gold-bg)" : "var(--rule)",
-          border:`1px solid ${mode === "due" ? "var(--gold-rule)" : "var(--rule2)"}`,
-          fontSize:13, color: mode === "due" ? "var(--gold)" : "var(--ink2)", lineHeight:1.5
+          background: hintBg, border:`1px solid ${hintBorder}`,
+          fontSize:13, color: hintColor, lineHeight:1.5,
         }}>
-          {mode === "due"
-            ? "⏱ Только карточки с наступившей датой повторения. Алгоритм обновит расписание."
-            : "📚 Все карточки категории. Расписание изменится только у карточек с повторением."}
+          {hintText}
         </div>
 
         <button onClick={onStart} disabled={!canStart} className="btn btn-primary" style={{ width:"100%", padding:"14px", fontSize:15, marginTop:"0.1rem" }}>
-          Начать повторение →
+          Начать →
         </button>
       </div>
 
@@ -684,33 +827,19 @@ function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts,
 
 function ModeButton({ active, label, count, hasRepeat, onClick }) {
   let badgeClass = "pill-count";
-
-  if (count > 0 && hasRepeat) {
-    badgeClass += " pill-count-repeat";
-  } else if (count > 0) {
-    badgeClass += " pill-count-default";
-  } else {
-    badgeClass += " pill-count-zero";
-  }
-
-  if (active) {
-    badgeClass += " pill-count-active";
-  }
+  if      (count > 0 && hasRepeat) badgeClass += " pill-count-repeat";
+  else if (count > 0)              badgeClass += " pill-count-default";
+  else                             badgeClass += " pill-count-zero";
 
   return (
-    <button
-      onClick={onClick}
-      className={`mode-pill${active ? " active" : ""}`}
-    >
+    <button onClick={onClick} className={`mode-pill${active?" active":""}`}>
       <span>{label}</span>
       <span className={badgeClass}>{count}</span>
     </button>
   );
 }
 
-/* ════════════════════════════════════════════
-   CATEGORY BROWSER
-════════════════════════════════════════════ */
+/* ══ CATEGORY BROWSER ══ */
 
 function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggleCollapsed }) {
   const totalAll  = categories.reduce((s, c) => s + countAll(c).total,  0);
@@ -721,33 +850,24 @@ function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggl
       <div className="overlay-panel" onClick={e => e.stopPropagation()}>
         <div style={{
           position:"sticky", top:0, background:"var(--card)",
-          padding:"15px 16px 12px",
-          borderBottom:"1px solid var(--rule)",
+          padding:"15px 16px 12px", borderBottom:"1px solid var(--rule)",
           display:"flex", alignItems:"center", justifyContent:"space-between"
         }}>
           <span style={{ fontSize:15, fontWeight:600 }}>Категория</span>
           <button onClick={onClose} style={{ color:"var(--ink3)", fontSize:18, lineHeight:1, padding:"2px 6px" }}>✕</button>
         </div>
-
         <div style={{ padding:"8px 8px 4px" }}>
-          <div
-            className={`cat-item${!selectedCatId ? " selected" : ""}`}
-            onClick={() => onSelect(null)}
-          >
+          <div className={`cat-item${!selectedCatId?" selected":""}`} onClick={() => onSelect(null)}>
             <span style={{ fontSize:14, fontWeight:500 }}>📋 Все категории</span>
             <CatBadge repeat={repeatAll} total={totalAll} />
           </div>
         </div>
-
         <div className="divider" style={{ margin:"4px 8px" }} />
-
         <div style={{ padding:"4px 8px 8px" }}>
           {categories.map(cat => (
-            <CatNode
-              key={cat.id} cat={cat} depth={0}
+            <CatNode key={cat.id} cat={cat} depth={0}
               selectedCatId={selectedCatId}
-              onSelect={onSelect} onToggleCollapsed={onToggleCollapsed}
-            />
+              onSelect={onSelect} onToggleCollapsed={onToggleCollapsed} />
           ))}
         </div>
       </div>
@@ -758,7 +878,7 @@ function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggl
 function CatBadge({ repeat, total }) {
   const hasRepeat = repeat > 0;
   return (
-    <span className={`cat-badge ${hasRepeat ? "cat-badge-has-repeat" : "cat-badge-no-repeat"}`}>
+    <span className={`cat-badge ${hasRepeat?"cat-badge-has-repeat":"cat-badge-no-repeat"}`}>
       {hasRepeat && <span className="repeat-part">{repeat}&nbsp;/&nbsp;</span>}
       <span>{total}</span>
     </span>
@@ -773,19 +893,15 @@ function CatNode({ cat, depth, selectedCatId, onSelect, onToggleCollapsed }) {
 
   return (
     <div>
-      <div
-        className={`cat-item${isSelected ? " selected" : ""}`}
-        style={{ paddingLeft: 10 + depth * 18 }}
-        onClick={() => onSelect(cat.id)}
-      >
-        <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:14, fontWeight: depth === 0 ? 500 : 400 }}>
+      <div className={`cat-item${isSelected?" selected":""}`} style={{ paddingLeft: 10 + depth * 18 }} onClick={() => onSelect(cat.id)}>
+        <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:14, fontWeight: depth===0?500:400 }}>
           {hasChildren
             ? <button onClick={e => { e.stopPropagation(); onToggleCollapsed(cat.id, isOpen); }}
-                className={`cat-toggle${isOpen ? " open" : ""}`}
+                className={`cat-toggle${isOpen?" open":""}`}
                 style={{ background:"var(--rule)", border:"none" }}>▶</button>
             : <span style={{ width:20 }} />
           }
-          {depth === 0 ? "📁" : "📄"}{" "}{cat.name}
+          {depth===0?"📁":"📄"}{" "}{cat.name}
         </span>
         <CatBadge repeat={repeat} total={total} />
       </div>
@@ -802,22 +918,35 @@ function CatNode({ cat, depth, selectedCatId, onSelect, onToggleCollapsed }) {
   );
 }
 
-/* ════════════════════════════════════════════
-   STUDY SCREEN
-════════════════════════════════════════════ */
+/* ══ STUDY SCREEN ══ */
 
-function StudyScreen({ card, cardState, cardIdx, timerSec, isRepeat, learnedCount, notLearnedCount, uniqueLeft, onReveal, onNext }) {
+function StudyScreen({
+  card, cardState, cardIdx, timerSec, trainMode,
+  learnInterval, learnErrors,
+  isRepeat, learnedCount, notLearnedCount, uniqueLeft,
+  onReveal, onNext
+}) {
   if (!card) return null;
   const showAnswer = cardState === "answer";
+  const isLearn    = trainMode === "learn";
 
   return (
     <div style={{ maxWidth:480, margin:"0 auto", paddingTop:"1.75rem", display:"flex", flexDirection:"column", gap:"1rem" }}>
 
-      {/* Progress */}
+      {/* Progress row */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div style={{ display:"flex", gap:6 }}>
-          <span className="chip chip-green">✓ {learnedCount}</span>
-          {notLearnedCount > 0 && <span className="chip chip-gold">↺ {notLearnedCount}</span>}
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          {isLearn ? (
+            <>
+              <span className="interval-badge">⏱ {learnInterval}с</span>
+              {learnErrors > 0 && <span className="chip chip-red">✗ {learnErrors}</span>}
+            </>
+          ) : (
+            <>
+              <span className="interval-badge">⏱ {timerSec}с</span>
+              {notLearnedCount > 0 && <span className="chip chip-gold">↺ {notLearnedCount}</span>}
+            </>
+          )}
         </div>
         <span style={{ fontSize:12, color:"var(--ink3)", fontWeight:500 }}>осталось {uniqueLeft}</span>
       </div>
@@ -827,15 +956,20 @@ function StudyScreen({ card, cardState, cardIdx, timerSec, isRepeat, learnedCoun
         style={{ position:"relative", overflow:"hidden", animation:"fadeUp 0.22s ease" }}>
 
         <div className="timer-track">
-          <div key={`bar-${cardIdx}`} className="timer-fill" style={{
-            animation: !showAnswer ? `barShrink ${timerSec}s linear forwards` : "none",
-            transform: showAnswer ? "scaleX(0)" : undefined,
-          }} />
+          <div
+            key={`bar-${cardIdx}-${timerSec}`}
+            className="timer-fill"
+            style={{
+              animation: !showAnswer ? `barShrink ${timerSec}s linear forwards` : "none",
+              transform: showAnswer ? "scaleX(0)" : undefined,
+            }}
+          />
         </div>
 
         <div style={{ padding:"1.75rem 2rem 2rem" }}>
           <div style={{ display:"flex", gap:6, marginBottom:14, minHeight:22 }}>
-            {isRepeat && <span className="chip chip-gold" style={{ fontSize:11 }}>↺ повтор</span>}
+            {isLearn  && <span className="chip chip-blue" style={{ fontSize:11 }}>🧠 изучение</span>}
+            {isRepeat && !isLearn && <span className="chip chip-gold" style={{ fontSize:11 }}>↺ повтор</span>}
             {!card.repeatable && <span className="chip chip-gray" style={{ fontSize:11 }}>без расписания</span>}
           </div>
 
@@ -868,41 +1002,49 @@ function StudyScreen({ card, cardState, cardIdx, timerSec, isRepeat, learnedCoun
   );
 }
 
-/* ════════════════════════════════════════════
-   COMPLETE SCREEN
-════════════════════════════════════════════ */
+/* ══ COMPLETE SCREEN ══ */
 
 function CompleteScreen({ stats, onReturn }) {
+  const isLearn    = stats?.learnMode ?? false;
   const learned    = stats?.learned    ?? 0;
   const notLearned = stats?.notLearned ?? 0;
-  const total      = learned + notLearned;
-  const pct        = total > 0 ? Math.round((learned / total) * 100) : 0;
+  const total      = isLearn ? (stats?.total ?? 0) : learned + notLearned;
+  const pct        = !isLearn && total > 0 ? Math.round((learned / total) * 100) : 0;
 
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"80vh", padding:"2rem" }}>
       <div className="surface" style={{ maxWidth:360, width:"100%", padding:"2.5rem 2rem 2rem", textAlign:"center", animation:"popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)" }}>
-        <div style={{ marginBottom:"1.75rem" }}>
-          <div style={{ fontSize:72, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums",
-            color: pct >= 80 ? "var(--green)" : "var(--gold)", letterSpacing:"-3px" }}>
-            {pct}<span style={{ fontSize:36, letterSpacing:"-1px" }}>%</span>
-          </div>
-          <p style={{ fontSize:14, color:"var(--ink3)", marginTop:8 }}>
-            {pct >= 80 ? "Отличный результат!" : pct >= 50 ? "Хороший прогресс" : "Продолжайте практику"}
-          </p>
-        </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr",
-          border:"1px solid var(--rule)", borderRadius:"var(--r-sm)", overflow:"hidden", marginBottom:"1.75rem" }}>
-          {[
-            { label:"усвоено",       value:learned,    color:"var(--green)" },
-            { label:"на повторение", value:notLearned, color:"var(--gold)"  },
-          ].map((s, i) => (
-            <div key={i} style={{ padding:"1.25rem 0.75rem", borderRight: i===0 ? "1px solid var(--rule)" : "none" }}>
-              <div style={{ fontSize:42, fontWeight:700, lineHeight:1, color:s.color, letterSpacing:"-2px" }}>{s.value}</div>
-              <div style={{ fontSize:12, color:"var(--ink2)", marginTop:6 }}>{s.label}</div>
+        {isLearn ? (
+          <>
+            <div style={{ fontSize:56, marginBottom:12 }}>🎉</div>
+            <p style={{ fontSize:22, fontFamily:"'DM Serif Display', Georgia, serif", marginBottom:8 }}>Все слова выучены!</p>
+            <p style={{ fontSize:14, color:"var(--ink3)", marginBottom:"1.75rem" }}>Карточек пройдено: {total}</p>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize:72, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums",
+              color: pct>=80?"var(--green)":"var(--gold)", letterSpacing:"-3px", marginBottom:8 }}>
+              {pct}<span style={{ fontSize:36, letterSpacing:"-1px" }}>%</span>
             </div>
-          ))}
-        </div>
+            <p style={{ fontSize:14, color:"var(--ink3)", marginBottom:"1.75rem" }}>
+              {pct>=80?"Отличный результат!":pct>=50?"Хороший прогресс":"Продолжайте практику"}
+            </p>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr",
+              border:"1px solid var(--rule)", borderRadius:"var(--r-sm)", overflow:"hidden", marginBottom:"1.75rem" }}>
+              {[
+                { label:"усвоено",       value:learned,    color:"var(--green)" },
+                { label:"на повторение", value:notLearned, color:"var(--gold)"  },
+              ].map((s, i) => (
+                <div key={i} style={{ padding:"1.25rem 0.75rem", borderRight: i===0?"1px solid var(--rule)":"none" }}>
+                  <div style={{ fontSize:42, fontWeight:700, lineHeight:1, color:s.color, letterSpacing:"-2px" }}>{s.value}</div>
+                  <div style={{ fontSize:12, color:"var(--ink2)", marginTop:6 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <button onClick={onReturn} className="btn btn-primary" style={{ width:"100%", padding:"14px", fontSize:15 }}>
           Вернуться →
