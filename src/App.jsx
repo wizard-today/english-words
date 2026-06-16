@@ -293,7 +293,6 @@ export default function App() {
   const [api]        = useState(() => new Api());
   const [screen,     setScreen]     = useState("start");
   const [categories, setCategories] = useState([]);
-  const [repeats,    setRepeats]    = useState([]);
   const [selectedCatId, setSelectedCatId] = useState(() => localStorage.getItem(LAST_CAT_KEY) ?? null);
   const [mode,       setMode]       = useState(() => localStorage.getItem(LAST_MODE_KEY) ?? "due");
   const [catOpen,    setCatOpen]    = useState(false);
@@ -352,7 +351,6 @@ export default function App() {
   useEffect(() => {
     Promise.all([api.getCategories(), api.getRepeats()]).then(([cats, reps]) => {
       setCategories(cats);
-      setRepeats(reps);
       repeatsRef.current = reps;
       setLoading(false);
     });
@@ -520,6 +518,18 @@ export default function App() {
     setScreen("start");
   };
 
+  const handleToggleCollapsed = (categoryId, collapsed) => {
+    // Optimistic update: patch collapsed flag in the categories tree
+    const patchTree = (list) => list.map(cat => {
+      if (cat.id === categoryId) return { ...cat, collapsed };
+      if (cat.nested?.length) return { ...cat, nested: patchTree(cat.nested) };
+      return cat;
+    });
+    setCategories(prev => patchTree(prev));
+    // Persist to DB
+    api.setCategoryCollapsed(categoryId, collapsed);
+  };
+
   const selectedCounts = (() => {
     if (!selectedCatId) {
       const total  = categories.reduce((s, c) => s + countAll(c).total,  0);
@@ -556,6 +566,7 @@ export default function App() {
           onSelectCat={id => { setSelectedCatId(id); setCatOpen(false); }}
           onMode={setMode}
           onStart={handleStart}
+          onToggleCollapsed={handleToggleCollapsed}
         />
       )}
 
@@ -585,7 +596,7 @@ export default function App() {
    START SCREEN
 ════════════════════════════════════════════ */
 
-function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts, mode, catOpen, onOpenCat, onCloseCat, onSelectCat, onMode, onStart }) {
+function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts, mode, catOpen, onOpenCat, onCloseCat, onSelectCat, onMode, onStart, onToggleCollapsed }) {
   const canStart =
     mode === "due"
       ? selectedCounts.repeat > 0
@@ -664,6 +675,7 @@ function StartScreen({ categories, selectedCatId, selectedLabel, selectedCounts,
           selectedCatId={selectedCatId}
           onSelect={onSelectCat}
           onClose={onCloseCat}
+          onToggleCollapsed={onToggleCollapsed}
         />
       )}
     </>
@@ -700,25 +712,7 @@ function ModeButton({ active, label, count, hasRepeat, onClick }) {
    CATEGORY BROWSER
 ════════════════════════════════════════════ */
 
-function CategoryBrowser({ categories, selectedCatId, onSelect, onClose }) {
-  const [expanded, setExpanded] = useState(() => {
-    const s = new Set();
-    const expand = (list, target) => {
-      for (const c of list) {
-        if (c.id === target || expand(c.nested ?? [], target)) { s.add(c.id); return true; }
-      }
-      return false;
-    };
-    if (selectedCatId) expand(categories, selectedCatId);
-    return s;
-  });
-
-  const toggle = id => setExpanded(prev => {
-    const s = new Set(prev);
-    s.has(id) ? s.delete(id) : s.add(id);
-    return s;
-  });
-
+function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggleCollapsed }) {
   const totalAll  = categories.reduce((s, c) => s + countAll(c).total,  0);
   const repeatAll = categories.reduce((s, c) => s + countAll(c).repeat, 0);
 
@@ -751,8 +745,8 @@ function CategoryBrowser({ categories, selectedCatId, onSelect, onClose }) {
           {categories.map(cat => (
             <CatNode
               key={cat.id} cat={cat} depth={0}
-              expanded={expanded} selectedCatId={selectedCatId}
-              onSelect={onSelect} onToggle={toggle}
+              selectedCatId={selectedCatId}
+              onSelect={onSelect} onToggleCollapsed={onToggleCollapsed}
             />
           ))}
         </div>
@@ -771,9 +765,9 @@ function CatBadge({ repeat, total }) {
   );
 }
 
-function CatNode({ cat, depth, expanded, selectedCatId, onSelect, onToggle }) {
+function CatNode({ cat, depth, selectedCatId, onSelect, onToggleCollapsed }) {
   const hasChildren = (cat.nested ?? []).length > 0;
-  const isOpen      = expanded.has(cat.id);
+  const isOpen      = !cat.collapsed;
   const isSelected  = cat.id === selectedCatId;
   const { total, repeat } = countAll(cat);
 
@@ -786,7 +780,7 @@ function CatNode({ cat, depth, expanded, selectedCatId, onSelect, onToggle }) {
       >
         <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:14, fontWeight: depth === 0 ? 500 : 400 }}>
           {hasChildren
-            ? <button onClick={e => { e.stopPropagation(); onToggle(cat.id); }}
+            ? <button onClick={e => { e.stopPropagation(); onToggleCollapsed(cat.id, isOpen); }}
                 className={`cat-toggle${isOpen ? " open" : ""}`}
                 style={{ background:"var(--rule)", border:"none" }}>▶</button>
             : <span style={{ width:20 }} />
@@ -799,8 +793,8 @@ function CatNode({ cat, depth, expanded, selectedCatId, onSelect, onToggle }) {
         <div>
           {cat.nested.map(child => (
             <CatNode key={child.id} cat={child} depth={depth+1}
-              expanded={expanded} selectedCatId={selectedCatId}
-              onSelect={onSelect} onToggle={onToggle} />
+              selectedCatId={selectedCatId}
+              onSelect={onSelect} onToggleCollapsed={onToggleCollapsed} />
           ))}
         </div>
       )}

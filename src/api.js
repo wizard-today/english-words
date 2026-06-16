@@ -36,6 +36,13 @@ export class Api {
     return apiFetch("/categories");
   }
 
+  async setCategoryCollapsed(categoryId, collapsed) {
+    return apiFetch(`/categories/${categoryId}/collapsed`, {
+      method: "PATCH",
+      body: { collapsed },
+    });
+  }
+
   /* ── All cards ── */
   async getAllCards({ categoryId } = {}) {
     const params = new URLSearchParams();
