@@ -44,48 +44,41 @@ export class Api {
   }
 
   /* ── All cards ── */
-  async getAllCards({ categoryId } = {}) {
+  async getAllCards({ categoryIds } = {}) {
     const params = new URLSearchParams();
-    if (categoryId != null) {
-      const categoryIds = await this._collectCategoryIds(categoryId);
-      params.set("categoryIds", categoryIds.join(","));
+    if (categoryIds?.length > 0) {
+      const allIds = await this._collectManyIds(categoryIds);
+      params.set("categoryIds", allIds.join(","));
     }
     const query = params.toString();
     return apiFetch(`/cards${query ? `?${query}` : ""}`);
   }
 
   /* ── Repeat cards (repeat_date <= now()) ── */
-  async getRepeatCards({ categoryId } = {}) {
+  async getRepeatCards({ categoryIds } = {}) {
     const params = new URLSearchParams();
-    if (categoryId != null) {
-      const categoryIds = await this._collectCategoryIds(categoryId);
-      params.set("categoryIds", categoryIds.join(","));
+    if (categoryIds?.length > 0) {
+      const allIds = await this._collectManyIds(categoryIds);
+      params.set("categoryIds", allIds.join(","));
     }
     const query = params.toString();
     return apiFetch(`/cards/repeat${query ? `?${query}` : ""}`);
   }
 
-  /* ── Собирает id категории и всех вложенных рекурсивно ── */
-  async _collectCategoryIds(categoryId) {
+  /* ── Собирает id для массива категорий + все вложенные, без дублей ── */
+  async _collectManyIds(categoryIds) {
     const categories = await this.getCategories();
+    const flatten = (cats) => cats.flatMap((c) => [c, ...flatten(c.nested ?? [])]);
+    const all = flatten(categories);
 
-    const collect = (id, cats) => {
-      const ids = [id];
-      const category = cats.find((c) => c.id === id);
-      if (category?.nested?.length) {
-        for (const nested of category.nested) {
-          ids.push(...collect(nested.id, nested.nested ? cats.concat(nested.nested) : cats));
-        }
-      }
-      return ids;
+    const collect = (id) => {
+      const cat = all.find((c) => c.id === id);
+      if (!cat) return [id];
+      return [id, ...(cat.nested ?? []).flatMap((n) => collect(n.id))];
     };
 
-    // Строим плоский список всех категорий для удобного поиска
-    const flatten = (cats) =>
-      cats.flatMap((c) => [c, ...flatten(c.nested ?? [])]);
-
-    const allCategories = flatten(categories);
-    return collect(categoryId, allCategories);
+    const result = new Set(categoryIds.flatMap((id) => collect(id)));
+    return [...result];
   }
 
   /* ── Mark learned ── */

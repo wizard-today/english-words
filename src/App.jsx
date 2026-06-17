@@ -15,8 +15,8 @@ const LAST_MODE_KEY  = "fc_last_mode";
 const LAST_TRAIN_KEY = "fc_last_train_mode";
 const LAST_TIMER_KEY = "fc_last_timer";
 
-const LEARN_INTERVALS = [10, 5, 3, 2, 1];
 const TIMER_OPTIONS   = [1, 2, 3, 5, 10];
+const LEARN_INTERVALS = TIMER_OPTIONS.toReversed();
 
 function countAll(cat) {
   const own  = cat.cards_count ?? 0;
@@ -316,7 +316,9 @@ export default function App() {
   const [api]      = useState(() => new Api());
   const [screen,   setScreen]   = useState("start");
   const [categories, setCategories] = useState([]);
-  const [selectedCatId, setSelectedCatId] = useState(() => localStorage.getItem(LAST_CAT_KEY) ?? null);
+  const [selectedCatIds, setSelectedCatIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LAST_CAT_KEY) ?? "[]"); } catch { return []; }
+  });
   const [mode,     setMode]     = useState(() => localStorage.getItem(LAST_MODE_KEY) ?? "due");
   // trainMode: "review" | "learn"
   const [trainMode, setTrainMode] = useState(() => localStorage.getItem(LAST_TRAIN_KEY) ?? "review");
@@ -381,9 +383,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (selectedCatId) localStorage.setItem(LAST_CAT_KEY, selectedCatId);
-    else localStorage.removeItem(LAST_CAT_KEY);
-  }, [selectedCatId]);
+    localStorage.setItem(LAST_CAT_KEY, JSON.stringify(selectedCatIds));
+  }, [selectedCatIds]);
 
   useEffect(() => { localStorage.setItem(LAST_MODE_KEY, mode); }, [mode]);
 
@@ -424,7 +425,7 @@ export default function App() {
   };
 
   const handleStart = async () => {
-    const opts = { categoryId: selectedCatId ?? undefined };
+    const opts = selectedCatIds.length > 0 ? { categoryIds: selectedCatIds } : {};
     let deck;
     if (mode === "due") {
       deck = shuffle(await api.getRepeatCards(opts));
@@ -642,16 +643,37 @@ export default function App() {
   };
 
   const selectedCounts = (() => {
-    if (!selectedCatId) {
-      const total  = categories.reduce((s, c) => s + countAll(c).total,  0);
-      const repeat = categories.reduce((s, c) => s + countAll(c).repeat, 0);
-      return { total, repeat };
+    if (selectedCatIds.length === 0) {
+      return {
+        total:  categories.reduce((s, c) => s + countAll(c).total,  0),
+        repeat: categories.reduce((s, c) => s + countAll(c).repeat, 0),
+      };
     }
-    const cat = findCat(categories, selectedCatId);
-    return cat ? countAll(cat) : { total: 0, repeat: 0 };
+    if (selectedCatIds.length === 1) {
+      const cat = findCat(categories, selectedCatIds[0]);
+      return cat ? countAll(cat) : { total: 0, repeat: 0 };
+    }
+    // Несколько категорий: суммируем countAll для каждой выбранной (топ-уровня),
+    // чтобы не дублировать вложенные
+    let total = 0, repeat = 0;
+    for (const id of selectedCatIds) {
+      const cat = findCat(categories, id);
+      if (cat) { const c = countAll(cat); total += c.total; repeat += c.repeat; }
+    }
+    return { total, repeat };
   })();
 
-  const selectedLabel = findCat(categories, selectedCatId)?.name ?? "Все категории";
+  const selectedLabel = (() => {
+    if (selectedCatIds.length === 0) return "Все категории";
+    if (selectedCatIds.length === 1) return findCat(categories, selectedCatIds[0])?.name ?? "Все категории";
+    return `Категорий: ${selectedCatIds.length}`;
+  })();
+
+  const categoryEmoji = (() => {
+    if (selectedCatIds.length === 0) return "📋";
+    if (selectedCatIds.length === 1) return "📁";
+    return "🗂️";
+  })();
 
   if (loading) return (
     <div className="fc-root" style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"100vh" }}>
@@ -667,16 +689,18 @@ export default function App() {
       {screen === "start" && (
         <StartScreen
           categories={categories}
-          selectedCatId={selectedCatId}
+          selectedCatIds={selectedCatIds}
           selectedLabel={selectedLabel}
           selectedCounts={selectedCounts}
+          categoryEmoji={categoryEmoji}
           mode={mode}
           trainMode={trainMode}
           timerSec={timerSec}
           catOpen={catOpen}
           onOpenCat={() => setCatOpen(true)}
           onCloseCat={() => setCatOpen(false)}
-          onSelectCat={id => { setSelectedCatId(id); setCatOpen(false); }}
+          onSelectCat={(ids) => { setSelectedCatIds(ids); setCatOpen(false); }}
+          onCheckCat={(ids) => setSelectedCatIds(ids)}
           onMode={setMode}
           onTrainMode={handleTrainMode}
           onTimerSec={setTimerSec}
@@ -713,9 +737,9 @@ export default function App() {
 /* ══ START SCREEN ══ */
 
 function StartScreen({
-  categories, selectedCatId, selectedLabel, selectedCounts,
+  categories, selectedCatIds, selectedLabel, selectedCounts, categoryEmoji,
   mode, trainMode, timerSec,
-  catOpen, onOpenCat, onCloseCat, onSelectCat,
+  catOpen, onOpenCat, onCloseCat, onSelectCat, onCheckCat,
   onMode, onTrainMode, onTimerSec, onStart, onToggleCollapsed
 }) {
   const canStart = mode === "due" ? selectedCounts.repeat > 0 : selectedCounts.total > 0;
@@ -750,7 +774,7 @@ function StartScreen({
             }}
           >
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span style={{ fontSize:15 }}>📂</span>
+              <span style={{ fontSize:15 }}>{categoryEmoji}</span>
               {selectedLabel}
             </span>
             <span style={{ color:"var(--ink3)", fontSize:12 }}>▾</span>
@@ -815,8 +839,9 @@ function StartScreen({
       {catOpen && (
         <CategoryBrowser
           categories={categories}
-          selectedCatId={selectedCatId}
-          onSelect={onSelectCat}
+          selectedCatIds={selectedCatIds}
+          onSelect={(id) => onSelectCat(id === null ? [] : [id])}
+          onCheck={onCheckCat}
           onClose={onCloseCat}
           onToggleCollapsed={onToggleCollapsed}
         />
@@ -841,9 +866,24 @@ function ModeButton({ active, label, count, hasRepeat, onClick }) {
 
 /* ══ CATEGORY BROWSER ══ */
 
-function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggleCollapsed }) {
+function CategoryBrowser({ categories, selectedCatIds, onSelect, onCheck, onClose, onToggleCollapsed }) {
   const totalAll  = categories.reduce((s, c) => s + countAll(c).total,  0);
   const repeatAll = categories.reduce((s, c) => s + countAll(c).repeat, 0);
+
+  // Собрать все id категории + вложенных
+  // const collectIds = (cat) => [cat.id, ...(cat.nested ?? []).flatMap(collectIds)];
+
+  const handleCheck = (cat, checked) => {
+    const ids = [cat.id];
+    if (checked) {
+      // добавляем все id этой ветки
+      onCheck([...new Set([...selectedCatIds, ...ids])]);
+    } else {
+      // убираем все id этой ветки
+      const remove = new Set(ids);
+      onCheck(selectedCatIds.filter(id => !remove.has(id)));
+    }
+  };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -857,7 +897,7 @@ function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggl
           <button onClick={onClose} style={{ color:"var(--ink3)", fontSize:18, lineHeight:1, padding:"2px 6px" }}>✕</button>
         </div>
         <div style={{ padding:"8px 8px 4px" }}>
-          <div className={`cat-item${!selectedCatId?" selected":""}`} onClick={() => onSelect(null)}>
+          <div className={`cat-item${selectedCatIds.length === 0 ? " selected" : ""}`} onClick={() => onSelect(null)}>
             <span style={{ fontSize:14, fontWeight:500 }}>📋 Все категории</span>
             <CatBadge repeat={repeatAll} total={totalAll} />
           </div>
@@ -866,8 +906,10 @@ function CategoryBrowser({ categories, selectedCatId, onSelect, onClose, onToggl
         <div style={{ padding:"4px 8px 8px" }}>
           {categories.map(cat => (
             <CatNode key={cat.id} cat={cat} depth={0}
-              selectedCatId={selectedCatId}
-              onSelect={onSelect} onToggleCollapsed={onToggleCollapsed} />
+              selectedCatIds={selectedCatIds}
+              onSelect={onSelect}
+              onCheck={handleCheck}
+              onToggleCollapsed={onToggleCollapsed} />
           ))}
         </div>
       </div>
@@ -885,32 +927,53 @@ function CatBadge({ repeat, total }) {
   );
 }
 
-function CatNode({ cat, depth, selectedCatId, onSelect, onToggleCollapsed }) {
+function CatNode({ cat, depth, selectedCatIds, onSelect, onCheck, onToggleCollapsed }) {
   const hasChildren = (cat.nested ?? []).length > 0;
   const isOpen      = !cat.collapsed;
-  const isSelected  = cat.id === selectedCatId;
+  const isSelected  = selectedCatIds.includes(cat.id);
   const { total, repeat } = countAll(cat);
 
   return (
     <div>
-      <div className={`cat-item${isSelected?" selected":""}`} style={{ paddingLeft: 10 + depth * 18 }} onClick={() => onSelect(cat.id)}>
+      <div
+        className={`cat-item${isSelected ? " selected" : ""}`}
+        style={{ paddingLeft: 10 + depth * 18 }}
+        onClick={() => onSelect(cat.id)}
+      >
         <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:14, fontWeight: depth===0?500:400 }}>
           {hasChildren
-            ? <button onClick={e => { e.stopPropagation(); onToggleCollapsed(cat.id, isOpen); }}
+            ? <button
+                onClick={e => { e.stopPropagation(); onToggleCollapsed(cat.id, isOpen); }}
                 className={`cat-toggle${isOpen?" open":""}`}
                 style={{ background:"var(--rule)", border:"none" }}>▶</button>
             : <span style={{ width:20 }} />
           }
           {depth===0?"📁":"📄"}{" "}{cat.name}
         </span>
-        <CatBadge repeat={repeat} total={total} />
+        <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <CatBadge repeat={repeat} total={total} />
+          <span
+            onClick={e => { e.stopPropagation(); onCheck(cat, !isSelected); }}
+            style={{
+              width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+              border: `2px solid ${isSelected ? "var(--gold)" : "var(--rule2)"}`,
+              background: isSelected ? "var(--gold)" : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", transition: "all var(--transition)",
+            }}
+          >
+            {isSelected && <span style={{ color:"#fff", fontSize:11, lineHeight:1, fontWeight:700 }}>✓</span>}
+          </span>
+        </span>
       </div>
       {hasChildren && isOpen && (
         <div>
           {cat.nested.map(child => (
             <CatNode key={child.id} cat={child} depth={depth+1}
-              selectedCatId={selectedCatId}
-              onSelect={onSelect} onToggleCollapsed={onToggleCollapsed} />
+              selectedCatIds={selectedCatIds}
+              onSelect={onSelect}
+              onCheck={onCheck}
+              onToggleCollapsed={onToggleCollapsed} />
           ))}
         </div>
       )}
