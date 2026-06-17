@@ -42,11 +42,11 @@ function nextRepeat(card, repeats) {
   if (!repeats.length) return { repeat_date_timestamp: now, repeat_after: null };
   if (!card.repeat_after) {
     const r = repeats[0];
-    return { repeat_date_timestamp: now + r.timestamp * 1000, repeat_after: { id: r.id } };
+    return { repeat_date_timestamp: now + r.timestamp, repeat_after: { id: r.id } };
   }
   const idx = repeats.findIndex(r => r.id === card.repeat_after.id);
   const next = idx === -1 || idx >= repeats.length - 1 ? repeats[repeats.length - 1] : repeats[idx + 1];
-  return { repeat_date_timestamp: now + next.timestamp * 1000, repeat_after: { id: next.id } };
+  return { repeat_date_timestamp: now + next.timestamp, repeat_after: { id: next.id } };
 }
 
 const CSS = `
